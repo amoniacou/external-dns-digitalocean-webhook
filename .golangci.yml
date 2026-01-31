@@ -1,0 +1,41 @@
+run:
+  timeout: 5m
+  allow-parallel-runners: true
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - gocritic
+    - goconst
+    - gocyclo
+    - gofmt
+    - goimports
+    - misspell
+    - unconvert
+    - unparam
+    - whitespace
+
+linters-settings:
+  gosec:
+    excludes:
+      - G104 # We often ignore errors in defer close
+  gocyclo:
+    min-complexity: 15
+  maligned:
+    suggest-new: true
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
