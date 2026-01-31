@@ -133,7 +133,7 @@ func (rw *responseWriter) WriteHeader(code int) {
 
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	_, _ = w.Write([]byte("OK"))
 }
 
 func (s *Server) negotiateHandler(w http.ResponseWriter, r *http.Request) {

@@ -1,41 +1,38 @@
+version: "2"
 run:
-  timeout: 5m
-  allow-parallel-runners: true
-
+  modules-download-mode: readonly
+  tests: false
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+    tab:
+      path: stdout
+      print-linter-name: true
+      colors: false
+    checkstyle:
+      path: report.xml
 linters:
-  enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosec
-    - gocritic
-    - goconst
-    - gocyclo
-    - gofmt
-    - goimports
-    - misspell
-    - unconvert
-    - unparam
-    - whitespace
-
-linters-settings:
-  gosec:
-    excludes:
-      - G104 # We often ignore errors in defer close
-  gocyclo:
-    min-complexity: 15
-  maligned:
-    suggest-new: true
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-
-issues:
-  exclude-use-default: false
-  max-issues-per-linter: 0
-  max-same-issues: 0
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: (.+)\.go$
+        text: vendor
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

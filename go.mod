@@ -9,6 +9,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.33.0
+	golang.org/x/sync v0.19.0
 	sigs.k8s.io/external-dns v0.20.0
 )
 

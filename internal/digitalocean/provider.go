@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/digitalocean/godo"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
+	"golang.org/x/sync/errgroup"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
@@ -18,6 +20,9 @@ const (
 	defaultTTL = 300
 )
 
+// Ensure Provider implements the interface
+var _ provider.Provider = (*Provider)(nil)
+
 // Provider implements the DNS provider interface for DigitalOcean
 type Provider struct {
 	provider.BaseProvider
@@ -25,6 +30,7 @@ type Provider struct {
 	domainFilter *endpoint.DomainFilter
 	apiPageSize  int
 	dryRun       bool
+	workers      int
 }
 
 type changeCreate struct {
@@ -88,6 +94,7 @@ func NewProvider(cfg *Config) (*Provider, error) {
 		domainFilter: endpoint.NewDomainFilter(cfg.DomainFilter),
 		apiPageSize:  cfg.APIPageSize,
 		dryRun:       cfg.DryRun,
+		workers:      cfg.Workers,
 	}, nil
 }
 
@@ -98,14 +105,14 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 		return nil, err
 	}
 
+	recordsByDomain, err := p.fetchRecordsParallel(ctx, zones)
+	if err != nil {
+		return nil, err
+	}
+
 	var endpoints []*endpoint.Endpoint
 	for _, zone := range zones {
-		records, err := p.fetchRecords(ctx, zone.Name)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, r := range records {
+		for _, r := range recordsByDomain[zone.Name] {
 			if p.SupportedRecordType(r.Type) {
 				name := r.Name + "." + zone.Name
 				data := r.Data
@@ -218,34 +225,187 @@ func (p *Provider) fetchZones(ctx context.Context) ([]godo.Domain, error) {
 	return allZones, nil
 }
 
-func (p *Provider) fetchRecords(ctx context.Context, zoneName string) ([]godo.DomainRecord, error) {
-	var allRecords []godo.DomainRecord
-	listOptions := &godo.ListOptions{PerPage: p.apiPageSize}
+// fetchRecords fetches all records for a zone, optionally concurrently
+func (p *Provider) fetchRecords(ctx context.Context, zoneName string, concurrency int) ([]godo.DomainRecord, error) {
+	if concurrency < 1 {
+		concurrency = 1
+	}
+	if concurrency == 1 {
+		// Sequential implementation (original)
+		var allRecords []godo.DomainRecord
+		listOptions := &godo.ListOptions{PerPage: p.apiPageSize}
 
-	for {
-		records, resp, err := p.client.Records(ctx, zoneName, listOptions)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list records for zone %s: %w", zoneName, err)
-		}
-		allRecords = append(allRecords, records...)
+		for {
+			records, resp, err := p.client.Records(ctx, zoneName, listOptions)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list records for zone %s: %w", zoneName, err)
+			}
+			allRecords = append(allRecords, records...)
 
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
+			if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
+				break
+			}
 
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
+			page, err := resp.Links.CurrentPage()
+			if err != nil {
+				return nil, err
+			}
+			listOptions.Page = page + 1
 		}
-		listOptions.Page = page + 1
+		return allRecords, nil
+	}
+
+	// Parallel implementation
+	// First, fetch the first page to determine total pages
+	listOptions := &godo.ListOptions{PerPage: p.apiPageSize, Page: 1}
+	records, resp, err := p.client.Records(ctx, zoneName, listOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list records for zone %s: %w", zoneName, err)
+	}
+
+	if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
+		return records, nil
+	}
+
+	// Determine last page
+	
+	// Quick hack to get last page: Use a helper function
+	lastPage, err := getLastPage(resp.Links)
+	if err != nil {
+		// Fallback to sequential if we can't determine last page
+		log.Warnf("Could not determine last page for zone %s, falling back to sequential fetch: %v", zoneName, err)
+		return p.fetchRecords(ctx, zoneName, 1)
+	}
+
+	allRecords := make([]godo.DomainRecord, 0, len(records)*lastPage)
+	allRecords = append(allRecords, records...)
+	
+	var mu sync.Mutex
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
+
+	for page := 2; page <= lastPage; page++ {
+		page := page
+		g.Go(func() error {
+			opts := &godo.ListOptions{PerPage: p.apiPageSize, Page: page}
+			pageRecords, _, err := p.client.Records(ctx, zoneName, opts)
+			if err != nil {
+				return fmt.Errorf("failed to fetch page %d for zone %s: %w", page, zoneName, err)
+			}
+			
+			mu.Lock()
+			allRecords = append(allRecords, pageRecords...)
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	return allRecords, nil
 }
 
-func (p *Provider) getRecordsByDomain(ctx context.Context) (map[string][]godo.DomainRecord, provider.ZoneIDName, error) {
-	recordsByDomain := map[string][]godo.DomainRecord{}
+func getLastPage(links *godo.Links) (int, error) {
+	if links == nil || links.Pages == nil || links.Pages.Last == "" {
+		return 1, nil
+	}
+	// Parse the URL
+	// Example: ...?page=123...
+	// We can use a regex or just simple string search
+	// Usually godo handles this internally but doesn't expose it.
+	// Let's look at how godo parses CurrentPage:
+	// It parses the 'prev' or 'next' link.
+	// We can do similar for 'last'.
+	
+	// But to be safe and simple, let's traverse blindly? No.
+	
+	// Let's use a simplified approach: extract `page=` param.
+	u := links.Pages.Last
+	idx := strings.Index(u, "page=")
+	if idx == -1 {
+		return 0, fmt.Errorf("page param not found in %s", u)
+	}
+	
+	str := u[idx+5:]
+	// Find end of number
+	end := 0
+	for end < len(str) && str[end] >= '0' && str[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0, fmt.Errorf("invalid page number in %s", u)
+	}
+	
+	var page int
+	_, err := fmt.Sscanf(str[:end], "%d", &page)
+	return page, err
+}
 
+// fetchRecordsParallel fetches records for multiple zones concurrently
+func (p *Provider) fetchRecordsParallel(ctx context.Context, zones []godo.Domain) (map[string][]godo.DomainRecord, error) {
+	recordsByDomain := make(map[string][]godo.DomainRecord)
+	var mu sync.Mutex
+
+	g, ctx := errgroup.WithContext(ctx)
+	
+	// Determine concurrency per zone
+	// If we have few zones, give more workers to each zone for pagination
+	// If we have many zones, process zones in parallel but pages sequentially
+	
+	numZones := len(zones)
+	if numZones == 0 {
+		return recordsByDomain, nil
+	}
+
+	workers := p.workers
+	if workers < 1 {
+		workers = 1
+	}
+	
+	// Limit concurrent zones to workers
+	maxConcurrentZones := workers
+	if numZones < maxConcurrentZones {
+		maxConcurrentZones = numZones
+	}
+	
+	g.SetLimit(maxConcurrentZones)
+	
+	// Calculate workers per zone
+	// If 1 zone, use all workers.
+	// If 2 zones, 10 workers -> 5 workers per zone.
+	workersPerZone := 1
+	if maxConcurrentZones > 0 {
+		workersPerZone = workers / maxConcurrentZones
+	}
+	if workersPerZone < 1 {
+		workersPerZone = 1
+	}
+
+	for _, zone := range zones {
+		zoneName := zone.Name
+		g.Go(func() error {
+			records, err := p.fetchRecords(ctx, zoneName, workersPerZone)
+			if err != nil {
+				return err
+			}
+
+			mu.Lock()
+			recordsByDomain[zoneName] = records
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return recordsByDomain, nil
+}
+
+func (p *Provider) getRecordsByDomain(ctx context.Context) (map[string][]godo.DomainRecord, provider.ZoneIDName, error) {
 	zones, err := p.zones(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -256,12 +416,9 @@ func (p *Provider) getRecordsByDomain(ctx context.Context) (map[string][]godo.Do
 		zoneNameIDMapper.Add(z.Name, z.Name)
 	}
 
-	for _, zone := range zones {
-		records, err := p.fetchRecords(ctx, zone.Name)
-		if err != nil {
-			return nil, nil, err
-		}
-		recordsByDomain[zone.Name] = append(recordsByDomain[zone.Name], records...)
+	recordsByDomain, err := p.fetchRecordsParallel(ctx, zones)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	return recordsByDomain, zoneNameIDMapper, nil

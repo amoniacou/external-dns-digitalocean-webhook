@@ -21,6 +21,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.HTTPRetryWaitMax != 30*time.Second {
 		t.Errorf("expected HTTPRetryWaitMax=30s, got %s", cfg.HTTPRetryWaitMax)
 	}
+	if cfg.Workers != 10 {
+		t.Errorf("expected Workers=10, got %d", cfg.Workers)
+	}
 }
 
 func TestNewConfigFromEnv_RequiredToken(t *testing.T) {

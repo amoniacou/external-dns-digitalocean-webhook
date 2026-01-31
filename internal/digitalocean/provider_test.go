@@ -52,7 +52,7 @@ func (m *mockDigitalOceanClient) List(ctx context.Context, opt *godo.ListOptions
 			Links: &godo.Links{
 				Pages: &godo.Pages{
 					Next: "http://example.com/v2/domains/?page=2",
-					Last: "1234",
+					Last: "http://example.com/v2/domains/?page=2",
 				},
 			},
 		}, nil
@@ -685,7 +685,7 @@ func TestDigitalOceanRecord(t *testing.T) {
 		client: &mockDigitalOceanClient{},
 	}
 
-	records, err := provider.fetchRecords(context.Background(), "example.com")
+	records, err := provider.fetchRecords(context.Background(), "example.com", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

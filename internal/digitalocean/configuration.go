@@ -23,6 +23,8 @@ type Config struct {
 	HTTPRetryWaitMin time.Duration
 	// HTTPRetryWaitMax is the maximum wait time between retries
 	HTTPRetryWaitMax time.Duration
+	// Workers is the number of concurrent workers for fetching records
+	Workers int
 }
 
 // DefaultConfig returns configuration with default values
@@ -32,6 +34,7 @@ func DefaultConfig() *Config {
 		HTTPRetryMax:     3,
 		HTTPRetryWaitMin: 1 * time.Second,
 		HTTPRetryWaitMax: 30 * time.Second,
+		Workers:          10,
 	}
 }
 
@@ -80,6 +83,13 @@ func NewConfigFromEnv() (*Config, error) {
 	if retryWaitMax := os.Getenv("DO_HTTP_RETRY_WAIT_MAX"); retryWaitMax != "" {
 		if v, err := time.ParseDuration(retryWaitMax); err == nil && v > 0 {
 			cfg.HTTPRetryWaitMax = v
+		}
+	}
+
+	// Optional: Workers
+	if workers := os.Getenv("DO_WORKERS"); workers != "" {
+		if v, err := strconv.Atoi(workers); err == nil && v > 0 {
+			cfg.Workers = v
 		}
 	}
 
