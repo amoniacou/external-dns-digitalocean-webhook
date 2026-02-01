@@ -2,16 +2,38 @@ name: release-publish
 
 on:
   push:
-    tags:
-      - v*
+    branches:
+      - main
 env:
   GOLANG_VERSION: "1.25"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
 jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
   release:
     name: Build containers
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     permissions:
       packages: write
       contents: write
@@ -22,42 +44,37 @@ jobs:
       version: ${{ steps.build-meta.outputs.version }}
       digest: ${{ steps.push.outputs.digest }}
     steps:
-      -
-        name: Checkout
+      - name: Checkout
         uses: actions/checkout@v6
         with:
-          # To identify the commit we need the history and all the tags.
-          fetch-depth: 0
-      -
-        name: Install Go
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-tags: true
+      - name: Install Go
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GOLANG_VERSION }}
-      -
-        name: Build meta
+      - name: Build meta
         id: build-meta
         run: |
           set -x
           commit_sha=${{ github.sha }}
           commit_date=$(git log -1 --pretty=format:'%ad' --date short "${commit_sha}")
-          
+
           # use git describe to get the nearest tag and use that to build the version
           # This assumes the tag starts with 'v'
           commit_version=$(git describe --tags --match 'v*' "${commit_sha}" | sed -e 's/^v//; s/-g[0-9a-f]\+$//; s/-\([0-9]\+\)$/+dev\1/')
           commit_short=$(git rev-parse --short "${commit_sha}")
-          
+
           echo "DATE=${commit_date}" >> $GITHUB_ENV
           echo "VERSION=${commit_version}" >> $GITHUB_OUTPUT # Set output for other steps/jobs if needed
           # Also set env var for GoReleaser
-          echo "VERSION=${commit_version}" >> $GITHUB_ENV 
+          echo "VERSION=${commit_version}" >> $GITHUB_ENV
           echo "COMMIT=${commit_short}" >> $GITHUB_ENV
-      -
-        name: Set GoReleaser environment
+      - name: Set GoReleaser environment
         run: |
           echo GOPATH=$(go env GOPATH) >> $GITHUB_ENV
           echo PWD=$(pwd) >> $GITHUB_ENV
-      -
-        name: Run GoReleaser
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -68,8 +85,7 @@ jobs:
           COMMIT: ${{ env.COMMIT }}
           VERSION: ${{ env.VERSION }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      -
-        name: Docker meta
+      - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -78,30 +94,25 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
-      -
-        name: Detect platforms
+      - name: Detect platforms
         id: docker-platforms
         run: |
           platforms="linux/amd64,linux/arm64"
           echo "PLATFORMS=${platforms}" >> $GITHUB_ENV
-      -
-        name: Set up QEMU
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
           platforms: ${{ env.PLATFORMS }}
-      -
-        name: Set up Docker Buildx
+      - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v3
-      -
-        name: Login to GitHub Container Registry
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      -
-        name: Build and push
+      - name: Build and push
         id: push
         uses: docker/build-push-action@v6
         with:
@@ -112,8 +123,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ env.VERSION }}
-      -
-        name: Generate artifact attestation
+      - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
