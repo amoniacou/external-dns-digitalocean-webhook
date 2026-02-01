@@ -28,6 +28,7 @@ jobs:
           args: --timeout=5m
 
   test:
+    needs: [lint]
     name: Test
     runs-on: ubuntu-latest
     steps:
@@ -39,6 +40,7 @@ jobs:
         run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
 
   build:
+    needs: test
     name: Build
     runs-on: ubuntu-latest
     steps:
