@@ -51,7 +51,6 @@ provider:
     image:
       repository: ghcr.io/amoniacou/external-dns-digitalocean-webhook
       tag: latest
-      pullPolicy: IfNotPresent
     env:
       - name: DO_TOKEN
         valueFrom:
@@ -63,30 +62,32 @@ provider:
       - name: DO_HTTP_RETRY_MAX
         value: "5"
     args:
+      - --port=8080
       - --log-level=info
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
     livenessProbe:
       httpGet:
         path: /healthz
-        port: http
+        port: http-webhook
       initialDelaySeconds: 10
       periodSeconds: 10
     readinessProbe:
       httpGet:
         path: /healthz
-        port: http
+        port: http-webhook
       initialDelaySeconds: 5
       periodSeconds: 5
-
-extraVolumeMounts:
-  - name: webhook-certs
-    mountPath: /etc/ssl/certs
-    readOnly: true
-
-extraVolumes:
-  - name: webhook-certs
-    hostPath:
-      path: /etc/ssl/certs
 ```
+
+> **Note:** The `--port=8080` flag is required because the ExternalDNS Helm chart expects the webhook to listen on port 8080 (`http-webhook`), while the binary defaults to 8888.
 
 Install the chart:
 
@@ -122,6 +123,15 @@ spec:
         # DigitalOcean Webhook sidecar
         - name: digitalocean-webhook
           image: ghcr.io/amoniacou/external-dns-digitalocean-webhook:latest
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           args:
             - --log-level=info
             - --retry-max=5
