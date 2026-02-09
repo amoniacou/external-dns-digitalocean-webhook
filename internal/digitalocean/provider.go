@@ -64,11 +64,6 @@ func NewProvider(cfg *Config) (*Provider, error) {
 	oauthClient := oauth2.NewClient(context.Background(), oauth2.StaticTokenSource(&oauth2.Token{
 		AccessToken: cfg.APIToken,
 	}))
-	
-	// Wrap transport for metrics
-	oauthClient.Transport = &metricsRoundTripper{
-		base: oauthClient.Transport,
-	}
 
 	// Configure retry with exponential backoff for rate limit (429) and server errors (5xx)
 	retryConfig := godo.RetryConfig{
@@ -84,6 +79,12 @@ func NewProvider(cfg *Config) (*Provider, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DigitalOcean client: %w", err)
+	}
+
+	// Wrap transport for metrics after godo.New() to avoid breaking
+	// oauth2.Transport type assertion inside godo's retry client setup
+	client.HTTPClient.Transport = &metricsRoundTripper{
+		base: client.HTTPClient.Transport,
 	}
 
 	log.Infof("DigitalOcean provider configured with retry: max=%d, waitMin=%s, waitMax=%s",
