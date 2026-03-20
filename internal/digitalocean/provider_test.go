@@ -583,6 +583,55 @@ func TestDigitalOceanProcessDeleteActions(t *testing.T) {
 	}
 }
 
+func TestDigitalOceanProcessDeleteActionsMX(t *testing.T) {
+	// DO API stores MX records with Priority and Data (host) as separate fields.
+	// Endpoint targets use "priority host" format (e.g. "10 mxa.eu.mailgun.org").
+	// The delete logic must parse the priority from the target before comparing with record.Data.
+	recordsByDomain := map[string][]godo.DomainRecord{
+		"example.com": {
+			{
+				ID:       10,
+				Name:     "mail",
+				Type:     endpoint.RecordTypeMX,
+				Data:     "mxa.eu.mailgun.org.",
+				Priority: 10,
+				TTL:      defaultTTL,
+			},
+			{
+				ID:       11,
+				Name:     "mail",
+				Type:     endpoint.RecordTypeMX,
+				Data:     "mxb.eu.mailgun.org.",
+				Priority: 10,
+				TTL:      defaultTTL,
+			},
+		},
+	}
+
+	deletesByDomain := map[string][]*endpoint.Endpoint{
+		"example.com": {
+			endpoint.NewEndpoint("mail.example.com", endpoint.RecordTypeMX, "10 mxa.eu.mailgun.org", "10 mxb.eu.mailgun.org"),
+		},
+	}
+
+	var chg changes
+	err := processDeleteActions(recordsByDomain, deletesByDomain, &chg)
+	require.NoError(t, err)
+
+	assert.Empty(t, chg.Creates)
+	assert.Empty(t, chg.Updates)
+	assert.Len(t, chg.Deletes, 2, "Both MX records should be deleted")
+
+	expectedDeletes := []*changeDelete{
+		{Domain: "example.com", RecordID: 10},
+		{Domain: "example.com", RecordID: 11},
+	}
+
+	if !elementsMatch(t, expectedDeletes, chg.Deletes) {
+		assert.Failf(t, "diff: %s", cmp.Diff(expectedDeletes, chg.Deletes))
+	}
+}
+
 func TestDigitalOceanGetMatchingDomainRecords(t *testing.T) {
 	records := []godo.DomainRecord{
 		{
