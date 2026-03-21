@@ -3,7 +3,7 @@ module github.com/amoniacou/external-dns-digitalocean-webhook
 go 1.25.0
 
 require (
-	github.com/digitalocean/godo v1.177.0
+	github.com/digitalocean/godo v1.178.0
 	github.com/google/go-cmp v0.7.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/sirupsen/logrus v1.9.4
