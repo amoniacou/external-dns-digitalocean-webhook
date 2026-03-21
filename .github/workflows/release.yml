@@ -100,7 +100,7 @@ jobs:
           platforms="linux/amd64,linux/arm64"
           echo "PLATFORMS=${platforms}" >> $GITHUB_ENV
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: ${{ env.PLATFORMS }}
       - name: Set up Docker Buildx
