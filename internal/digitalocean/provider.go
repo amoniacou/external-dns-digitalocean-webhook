@@ -734,14 +734,15 @@ func processDeleteActions(recordsByDomain map[string][]godo.DomainRecord, delete
 				for _, t := range ep.Targets {
 					v1 := t
 					v2 := record.Data
-					if ep.RecordType == endpoint.RecordTypeMX {
+					switch ep.RecordType {
+					case endpoint.RecordTypeMX:
 						// MX targets have format "priority host" (e.g. "10 mxa.eu.mailgun.org")
 						// but record.Data from the DO API contains only the host (e.g. "mxa.eu.mailgun.org.")
 						if mxRecord, err := endpoint.NewMXRecord(t); err == nil {
 							v1 = provider.EnsureTrailingDot(*mxRecord.GetHost())
 						}
 						v2 = provider.EnsureTrailingDot(record.Data)
-					} else if ep.RecordType == endpoint.RecordTypeCNAME {
+					case endpoint.RecordTypeCNAME:
 						v1 = strings.TrimSuffix(t, ".")
 						v2 = strings.TrimSuffix(record.Data, ".")
 					}
