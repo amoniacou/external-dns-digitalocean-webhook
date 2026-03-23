@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v0.1.2...v0.1.3) (2026-03-23)
+
+
+### Bug Fixes
+
+* Proper checking of MX records ([1ea85fe](https://github.com/amoniacou/external-dns-digitalocean-webhook/commit/1ea85fe7db70b136ffd989d99ef62b61bc5ef83d))
+
 ## [0.1.2](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v0.1.1...v0.1.2) (2026-02-09)
 
 
