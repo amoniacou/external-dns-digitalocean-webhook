@@ -3,13 +3,13 @@ module github.com/amoniacou/external-dns-digitalocean-webhook
 go 1.26.1
 
 require (
-	github.com/digitalocean/godo v1.184.0
+	github.com/digitalocean/godo v1.195.0
 	github.com/google/go-cmp v0.7.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.20.0
+	golang.org/x/sync v0.21.0
 	sigs.k8s.io/external-dns v0.21.0
 )
 
