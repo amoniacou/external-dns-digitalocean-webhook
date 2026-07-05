@@ -525,13 +525,14 @@ func mergeEndpointsByNameType(endpoints []*endpoint.Endpoint) []*endpoint.Endpoi
 	for _, eps := range endpointsByNameType {
 		dnsName := eps[0].DNSName
 		recordType := eps[0].RecordType
+		ttl := eps[0].RecordTTL
 
 		targets := make([]string, len(eps))
 		for i, e := range eps {
 			targets[i] = e.Targets[0]
 		}
 
-		e := endpoint.NewEndpoint(dnsName, recordType, targets...)
+		e := endpoint.NewEndpointWithTTL(dnsName, recordType, ttl, targets...)
 		result = append(result, e)
 	}
 
