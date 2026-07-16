@@ -45,8 +45,10 @@ func (m *mockProvider) GetDomainFilter() endpoint.DomainFilterInterface {
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	assert.Equal(t, "0.0.0.0", cfg.Host)
+	assert.Equal(t, "127.0.0.1", cfg.Host)
 	assert.Equal(t, 8888, cfg.Port)
+	assert.Equal(t, "0.0.0.0", cfg.HealthHost)
+	assert.Equal(t, 8080, cfg.HealthPort)
 	assert.NotZero(t, cfg.ReadTimeout)
 	assert.NotZero(t, cfg.WriteTimeout)
 }
@@ -231,6 +233,56 @@ func TestAdjustEndpointsHandler_InvalidBody(t *testing.T) {
 	srv.adjustEndpointsHandler(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestWebhookMuxRouting(t *testing.T) {
+	filter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider := &mockProvider{domainFilter: *filter}
+	mux := New(provider, nil).buildWebhookMux()
+
+	cases := []struct {
+		method string
+		path   string
+		status int
+	}{
+		{http.MethodGet, "/", http.StatusOK},
+		{http.MethodGet, "/records", http.StatusOK},
+		{http.MethodPost, "/adjustendpoints", http.StatusBadRequest},
+	}
+
+	for _, tc := range cases {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		assert.Equal(t, tc.status, rr.Code, "%s %s", tc.method, tc.path)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	assert.Equal(t, mediaTypeVersion, rr.Header().Get(contentTypeHeader))
+}
+
+func TestHealthMuxRouting(t *testing.T) {
+	provider := &mockProvider{}
+	mux := New(provider, nil).buildHealthMux()
+
+	cases := []struct {
+		path   string
+		status int
+	}{
+		{"/healthz", http.StatusOK},
+		{"/metrics", http.StatusOK},
+		{"/records", http.StatusNotFound},
+		{"/adjustendpoints", http.StatusNotFound},
+	}
+
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		assert.Equal(t, tc.status, rr.Code, "GET %s", tc.path)
+	}
 }
 
 func TestLoggingMiddleware(t *testing.T) {

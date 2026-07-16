@@ -26,6 +26,8 @@ const (
 type Config struct {
 	Host         string
 	Port         int
+	HealthHost   string
+	HealthPort   int
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 }
@@ -33,8 +35,10 @@ type Config struct {
 // DefaultConfig returns default server configuration
 func DefaultConfig() *Config {
 	return &Config{
-		Host:         "0.0.0.0",
+		Host:         "127.0.0.1",
 		Port:         8888,
+		HealthHost:   "0.0.0.0",
+		HealthPort:   8080,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
@@ -42,9 +46,10 @@ func DefaultConfig() *Config {
 
 // Server is the webhook HTTP server
 type Server struct {
-	provider provider.Provider
-	config   *Config
-	server   *http.Server
+	provider     provider.Provider
+	config       *Config
+	server       *http.Server
+	healthServer *http.Server
 }
 
 // New creates a new webhook server
@@ -59,52 +64,91 @@ func New(p provider.Provider, cfg *Config) *Server {
 	}
 }
 
-// Start starts the HTTP server
-func (s *Server) Start(ctx context.Context) error {
+// buildWebhookMux returns the mux serving the private webhook API endpoints.
+func (s *Server) buildWebhookMux() *http.ServeMux {
 	mux := http.NewServeMux()
-
-	// Health check
-	mux.HandleFunc("/healthz", s.healthHandler)
-
-	// Metrics
-	mux.Handle("/metrics", promhttp.Handler())
-
-	// Webhook API endpoints
 	mux.HandleFunc("/", s.negotiateHandler)
 	mux.HandleFunc("/records", s.recordsHandler)
 	mux.HandleFunc("/adjustendpoints", s.adjustEndpointsHandler)
+	return mux
+}
 
-	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
+// buildHealthMux returns the mux serving the public health and metrics endpoints.
+func (s *Server) buildHealthMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", s.healthHandler)
+	mux.Handle("/metrics", promhttp.Handler())
+	return mux
+}
+
+// Start starts the webhook and health HTTP servers
+func (s *Server) Start(ctx context.Context) error {
+	webhookAddr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
+	healthAddr := fmt.Sprintf("%s:%d", s.config.HealthHost, s.config.HealthPort)
 
 	s.server = &http.Server{
-		Addr:         addr,
-		Handler:      s.loggingMiddleware(mux),
+		Addr:         webhookAddr,
+		Handler:      s.loggingMiddleware(s.buildWebhookMux()),
+		ReadTimeout:  s.config.ReadTimeout,
+		WriteTimeout: s.config.WriteTimeout,
+	}
+	s.healthServer = &http.Server{
+		Addr:         healthAddr,
+		Handler:      s.loggingMiddleware(s.buildHealthMux()),
 		ReadTimeout:  s.config.ReadTimeout,
 		WriteTimeout: s.config.WriteTimeout,
 	}
 
-	listener, err := net.Listen("tcp", addr)
+	webhookListener, err := net.Listen("tcp", webhookAddr)
 	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", addr, err)
+		return fmt.Errorf("failed to listen on %s: %w", webhookAddr, err)
+	}
+	healthListener, err := net.Listen("tcp", healthAddr)
+	if err != nil {
+		_ = webhookListener.Close()
+		return fmt.Errorf("failed to listen on %s: %w", healthAddr, err)
 	}
 
-	log.Infof("Starting webhook server on %s", addr)
+	log.Infof("Starting webhook API server on %s", webhookAddr)
+	log.Infof("Starting health/metrics server on %s", healthAddr)
+
+	serveCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	go func() {
-		<-ctx.Done()
-		log.Info("Shutting down webhook server...")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+		<-serveCtx.Done()
+		log.Info("Shutting down servers...")
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
 		if err := s.server.Shutdown(shutdownCtx); err != nil {
-			log.WithError(err).Error("Error shutting down server")
+			log.WithError(err).Error("Error shutting down webhook server")
+		}
+		if err := s.healthServer.Shutdown(shutdownCtx); err != nil {
+			log.WithError(err).Error("Error shutting down health server")
 		}
 	}()
 
-	if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("server error: %w", err)
+	errCh := make(chan error, 2)
+	serve := func(srv *http.Server, listener net.Listener, name string) {
+		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+			errCh <- fmt.Errorf("%s server error: %w", name, err)
+			cancel()
+			return
+		}
+		errCh <- nil
 	}
 
-	return nil
+	go serve(s.server, webhookListener, "webhook")
+	go serve(s.healthServer, healthListener, "health")
+
+	var firstErr error
+	for i := 0; i < 2; i++ {
+		if err := <-errCh; err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	return firstErr
 }
 
 func (s *Server) loggingMiddleware(next http.Handler) http.Handler {

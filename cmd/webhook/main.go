@@ -23,19 +23,23 @@ var (
 func main() {
 	// Parse flags
 	var (
-		logLevel    string
-		logFormat   string
-		host        string
-		port        int
-		dryRun      bool
-		retryMax    int
+		logLevel     string
+		logFormat    string
+		host         string
+		port         int
+		healthHost   string
+		healthPort   int
+		dryRun       bool
+		retryMax     int
 		retryWaitMax time.Duration
 	)
 
 	flag.StringVar(&logLevel, "log-level", getEnvOrDefault("LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
 	flag.StringVar(&logFormat, "log-format", getEnvOrDefault("LOG_FORMAT", "text"), "Log format (text, json)")
-	flag.StringVar(&host, "host", getEnvOrDefault("WEBHOOK_HOST", "0.0.0.0"), "Webhook server host")
-	flag.IntVar(&port, "port", getEnvOrDefaultInt("WEBHOOK_PORT", 8888), "Webhook server port")
+	flag.StringVar(&host, "host", getEnvOrDefault("WEBHOOK_HOST", "127.0.0.1"), "Webhook API server host")
+	flag.IntVar(&port, "port", getEnvOrDefaultInt("WEBHOOK_PORT", 8888), "Webhook API server port")
+	flag.StringVar(&healthHost, "health-host", getEnvOrDefault("HEALTH_HOST", "0.0.0.0"), "Health and metrics server host")
+	flag.IntVar(&healthPort, "health-port", getEnvOrDefaultInt("HEALTH_PORT", 8080), "Health and metrics server port")
 	flag.BoolVar(&dryRun, "dry-run", getEnvOrDefaultBool("DO_DRY_RUN", false), "Dry run mode")
 	flag.IntVar(&retryMax, "retry-max", getEnvOrDefaultInt("DO_HTTP_RETRY_MAX", 3), "Maximum HTTP retries")
 	flag.DurationVar(&retryWaitMax, "retry-wait-max", getEnvOrDefaultDuration("DO_HTTP_RETRY_WAIT_MAX", 30*time.Second), "Maximum wait between retries")
