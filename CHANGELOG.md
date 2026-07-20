@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v0.1.3...v1.0.0) (2026-07-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* Separate webhook API and public health checks/metrics. Fixes #24
+
+### Features
+
+* Separate webhook API and public health checks/metrics. Fixes [#24](https://github.com/amoniacou/external-dns-digitalocean-webhook/issues/24) ([b4ec22b](https://github.com/amoniacou/external-dns-digitalocean-webhook/commit/b4ec22b4f705cc88741bf9dddbe569fdf3bfd9a8))
+
 ## [0.1.3](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v0.1.2...v0.1.3) (2026-03-23)
 
 
