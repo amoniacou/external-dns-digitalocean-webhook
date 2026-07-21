@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v1.0.1...v1.0.2) (2026-07-21)
+
+
+### Bug Fixes
+
+* Fix parsing args ([8a61ffb](https://github.com/amoniacou/external-dns-digitalocean-webhook/commit/8a61ffb2324f6f0907faa16496321e7bb8296be9))
+
 ## [1.0.1](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v1.0.0...v1.0.1) (2026-07-21)
 
 
