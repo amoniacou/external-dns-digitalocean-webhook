@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v1.0.0...v1.0.1) (2026-07-21)
+
+
+### Miscellaneous Chores
+
+* release 1.0.1 ([85a1ce6](https://github.com/amoniacou/external-dns-digitalocean-webhook/commit/85a1ce67da9cbabb4900e9763bdcde1c2c31c558))
+
 ## [1.0.0](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v0.1.3...v1.0.0) (2026-07-20)
 
 
