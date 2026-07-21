@@ -36,9 +36,9 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Host:         "127.0.0.1",
-		Port:         8888,
+		Port:         8080,
 		HealthHost:   "0.0.0.0",
-		HealthPort:   8080,
+		HealthPort:   8888,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}

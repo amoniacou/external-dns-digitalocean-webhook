@@ -46,9 +46,9 @@ func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
 	assert.Equal(t, "127.0.0.1", cfg.Host)
-	assert.Equal(t, 8888, cfg.Port)
+	assert.Equal(t, 8080, cfg.Port)
 	assert.Equal(t, "0.0.0.0", cfg.HealthHost)
-	assert.Equal(t, 8080, cfg.HealthPort)
+	assert.Equal(t, 8888, cfg.HealthPort)
 	assert.NotZero(t, cfg.ReadTimeout)
 	assert.NotZero(t, cfg.WriteTimeout)
 }
@@ -59,7 +59,7 @@ func TestNewServer(t *testing.T) {
 	// With nil config
 	srv := New(provider, nil)
 	assert.NotNil(t, srv)
-	assert.Equal(t, 8888, srv.config.Port)
+	assert.Equal(t, 8080, srv.config.Port)
 
 	// With custom config
 	cfg := &Config{Host: "127.0.0.1", Port: 9999}

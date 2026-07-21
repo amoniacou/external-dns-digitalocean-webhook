@@ -20,33 +20,57 @@ var (
 	date    = "unknown"
 )
 
-func main() {
-	// Parse flags
-	var (
-		logLevel     string
-		logFormat    string
-		host         string
-		port         int
-		healthHost   string
-		healthPort   int
-		dryRun       bool
-		retryMax     int
-		retryWaitMax time.Duration
-	)
+type options struct {
+	logLevel     string
+	logFormat    string
+	host         string
+	port         int
+	healthHost   string
+	healthPort   int
+	dryRun       bool
+	retryMax     int
+	retryWaitMax time.Duration
+}
 
-	flag.StringVar(&logLevel, "log-level", getEnvOrDefault("LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
-	flag.StringVar(&logFormat, "log-format", getEnvOrDefault("LOG_FORMAT", "text"), "Log format (text, json)")
-	flag.StringVar(&host, "host", getEnvOrDefault("WEBHOOK_HOST", "127.0.0.1"), "Webhook API server host")
-	flag.IntVar(&port, "port", getEnvOrDefaultInt("WEBHOOK_PORT", 8888), "Webhook API server port")
-	flag.StringVar(&healthHost, "health-host", getEnvOrDefault("HEALTH_HOST", "0.0.0.0"), "Health and metrics server host")
-	flag.IntVar(&healthPort, "health-port", getEnvOrDefaultInt("HEALTH_PORT", 8080), "Health and metrics server port")
-	flag.BoolVar(&dryRun, "dry-run", getEnvOrDefaultBool("DO_DRY_RUN", false), "Dry run mode")
-	flag.IntVar(&retryMax, "retry-max", getEnvOrDefaultInt("DO_HTTP_RETRY_MAX", 3), "Maximum HTTP retries")
-	flag.DurationVar(&retryWaitMax, "retry-wait-max", getEnvOrDefaultDuration("DO_HTTP_RETRY_WAIT_MAX", 30*time.Second), "Maximum wait between retries")
-	flag.Parse()
+func parseOptions(args []string) (*options, error) {
+	fs := flag.NewFlagSet("external-dns-digitalocean-webhook", flag.ContinueOnError)
+
+	var o options
+	fs.StringVar(&o.logLevel, "log-level", getEnvOrDefault("LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
+	fs.StringVar(&o.logFormat, "log-format", getEnvOrDefault("LOG_FORMAT", "text"), "Log format (text, json)")
+	fs.StringVar(&o.host, "host", getEnvOrDefault("WEBHOOK_HOST", "127.0.0.1"), "Webhook API server host")
+	fs.IntVar(&o.port, "port", getEnvOrDefaultInt("WEBHOOK_PORT", 8080), "Webhook API server port")
+	fs.StringVar(&o.healthHost, "health-host", getEnvOrDefault("HEALTH_HOST", "0.0.0.0"), "Health and metrics server host")
+	fs.IntVar(&o.healthPort, "health-port", getEnvOrDefaultInt("HEALTH_PORT", 8888), "Health and metrics server port")
+	fs.BoolVar(&o.dryRun, "dry-run", getEnvOrDefaultBool("DO_DRY_RUN", false), "Dry run mode")
+	fs.IntVar(&o.retryMax, "retry-max", getEnvOrDefaultInt("DO_HTTP_RETRY_MAX", 3), "Maximum HTTP retries")
+	fs.DurationVar(&o.retryWaitMax, "retry-wait-max", getEnvOrDefaultDuration("DO_HTTP_RETRY_WAIT_MAX", 30*time.Second), "Maximum wait between retries")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	return &o, nil
+}
+
+func (o *options) serverConfig() *server.Config {
+	return &server.Config{
+		Host:         o.host,
+		Port:         o.port,
+		HealthHost:   o.healthHost,
+		HealthPort:   o.healthPort,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+	}
+}
+
+func main() {
+	o, err := parseOptions(os.Args[1:])
+	if err != nil {
+		os.Exit(2)
+	}
 
 	// Setup logging
-	setupLogging(logLevel, logFormat)
+	setupLogging(o.logLevel, o.logFormat)
 
 	log.Infof("Starting external-dns-digitalocean-webhook version=%s commit=%s date=%s", version, commit, date)
 
@@ -57,9 +81,9 @@ func main() {
 	}
 
 	// Override with flags
-	cfg.DryRun = dryRun
-	cfg.HTTPRetryMax = retryMax
-	cfg.HTTPRetryWaitMax = retryWaitMax
+	cfg.DryRun = o.dryRun
+	cfg.HTTPRetryMax = o.retryMax
+	cfg.HTTPRetryWaitMax = o.retryWaitMax
 
 	// Create provider
 	provider, err := digitalocean.NewProvider(cfg)
@@ -68,12 +92,7 @@ func main() {
 	}
 
 	// Create server
-	srv := server.New(provider, &server.Config{
-		Host:         host,
-		Port:         port,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	})
+	srv := server.New(provider, o.serverConfig())
 
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
