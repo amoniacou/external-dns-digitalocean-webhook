@@ -23,6 +23,13 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 | `DO_HTTP_RETRY_MAX` | No | `3` | Maximum HTTP retries |
 | `DO_HTTP_RETRY_WAIT_MIN` | No | `1s` | Minimum wait between retries |
 | `DO_HTTP_RETRY_WAIT_MAX` | No | `30s` | Maximum wait between retries |
+| `DO_WORKERS` | No | `10` | Number of concurrent workers used to fetch records |
+| `LOG_LEVEL` | No | `info` | Log level (`debug`, `info`, `warn`, or `error`) |
+| `LOG_FORMAT` | No | `text` | Log format (`text` or `json`) |
+| `WEBHOOK_HOST` | No | `127.0.0.1` | Webhook API listener host |
+| `WEBHOOK_PORT` | No | `8080` | Webhook API listener port |
+| `HEALTH_HOST` | No | `0.0.0.0` | Health and metrics listener host |
+| `HEALTH_PORT` | No | `8888` | Health and metrics listener port |
 
 ### Command Line Flags
 
@@ -30,20 +37,19 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 --log-level      Log level (debug, info, warn, error) [default: info]
 --log-format     Log format (text, json) [default: text]
 --host           Webhook API server host [default: 127.0.0.1]
---port           Webhook API server port [default: 8888]
+--port           Webhook API server port [default: 8080]
 --health-host    Health and metrics server host [default: 0.0.0.0]
---health-port    Health and metrics server port [default: 8080]
+--health-port    Health and metrics server port [default: 8888]
 --dry-run        Enable dry-run mode
 --retry-max      Maximum HTTP retries [default: 3]
 --retry-wait-max Maximum wait between retries [default: 30s]
 ```
 
-The server exposes two separate listeners:
+Command-line flags take precedence over their corresponding environment
+variables. The server exposes two separate listeners:
 
-- **Webhook API** (`/`, `/records`, `/adjustendpoints`) — bound to `127.0.0.1:8888` by default. These endpoints are consumed only by ExternalDNS and should not be reachable from outside the pod.
-- **Health & metrics** (`/healthz`, `/metrics`) — bound to `0.0.0.0:8080` by default, so probes and Prometheus can reach them without exposing the webhook API.
-
-Each host/port can also be set via the `WEBHOOK_HOST`, `WEBHOOK_PORT`, `HEALTH_HOST` and `HEALTH_PORT` environment variables.
+- **Webhook API** (`/`, `/records`, `/adjustendpoints`) — bound to `127.0.0.1:8080` by default. These endpoints are consumed only by ExternalDNS and should not be reachable from outside the pod.
+- **Health & metrics** (`/healthz`, `/metrics`) — bound to `0.0.0.0:8888` by default, so probes and Prometheus can reach them without exposing the webhook API.
 
 ## Deployment
 
@@ -72,7 +78,9 @@ provider:
         value: "5"
     args:
       - --port=8080
+      - --host=localhost
       - --health-port=8888
+      - --health-host=0.0.0.0
       - --log-level=info
     securityContext:
       runAsUser: 65532
@@ -95,15 +103,36 @@ provider:
         port: 8888
       initialDelaySeconds: 5
       periodSeconds: 5
+
+policy: sync
+registry: txt
+txtOwnerId: my-cluster
+
+extraArgs:
+  webhook-provider-url: http://localhost:8080
+
+domainFilters:
+  - example.com
+
+sources:
+  - ingress
+  - crd
 ```
 
-> **Note:** `--port=8080` puts the webhook API on the port the ExternalDNS Helm chart expects (`http-webhook`); ExternalDNS reaches it over `localhost` in the same pod. Health checks and metrics are served on a separate listener, moved here to `8888` via `--health-port` so it does not collide with the API port. The webhook API host defaults to `127.0.0.1`, so probes and scraping must target the health port (`8888`), not the API port.
+> **Note:** ExternalDNS reaches the webhook API over
+> `http://localhost:8080` in the same pod. Health checks and metrics use the
+> separate `0.0.0.0:8888` listener. Probes and Prometheus must therefore target
+> port `8888`, not the webhook API port.
 
 Install the chart:
 
 ```bash
 helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
-helm upgrade --install external-dns external-dns/external-dns -f values.yaml
+helm upgrade --install external-dns external-dns/external-dns \
+  --version 1.21.1 \
+  --namespace external-dns \
+  --create-namespace \
+  -f values.yaml
 ```
 
 ### Kubernetes Deployment (Sidecar) - Manual
@@ -124,7 +153,7 @@ spec:
             - --source=ingress
             - --source=crd
             - --provider=webhook
-            - --webhook-provider-url=http://localhost:8888
+            - --webhook-provider-url=http://localhost:8080
             - --policy=sync
             - --registry=txt
             - --txt-owner-id=my-cluster
@@ -143,6 +172,10 @@ spec:
               drop:
                 - ALL
           args:
+            - --port=8080
+            - --host=localhost
+            - --health-port=8888
+            - --health-host=0.0.0.0
             - --log-level=info
             - --retry-max=5
             - --retry-wait-max=60s
@@ -155,9 +188,9 @@ spec:
             - name: DO_DOMAIN_FILTER
               value: "example.com,example.org"
           ports:
-            - containerPort: 8888
-              name: http-webhook
             - containerPort: 8080
+              name: http-webhook
+            - containerPort: 8888
               name: http-health
           livenessProbe:
             httpGet:
@@ -189,7 +222,7 @@ stringData:
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - Make
 - [GoReleaser](https://goreleaser.com/) (required for building Docker images)
 
@@ -211,7 +244,7 @@ DO_TOKEN=your-token make run
 
 ## Metrics
 
-The webhook exposes Prometheus metrics at `http://localhost:8080/metrics` by default (the health and metrics listener, separate from the webhook API). These metrics help track interactions with the DigitalOcean API and monitor rate limits.
+The webhook exposes Prometheus metrics at `http://localhost:8888/metrics` by default (the health and metrics listener, separate from the webhook API). These metrics help track interactions with the DigitalOcean API and monitor rate limits.
 
 | Metric | Description | Labels |
 |--------|-------------|--------|
