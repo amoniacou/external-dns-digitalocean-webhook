@@ -608,7 +608,7 @@ func makeDomainEditRequest(domain, name, recordType, data string, ttl int) *godo
 			return request
 		}
 		request.Priority = int(*mxRecord.GetPriority())
-		request.Data = provider.EnsureTrailingDot(*mxRecord.GetHost())
+		request.Data = provider.EnsureTrailingDot(mxRecord.GetHost())
 	}
 
 	return request
@@ -740,7 +740,7 @@ func processDeleteActions(recordsByDomain map[string][]godo.DomainRecord, delete
 						// MX targets have format "priority host" (e.g. "10 mxa.eu.mailgun.org")
 						// but record.Data from the DO API contains only the host (e.g. "mxa.eu.mailgun.org.")
 						if mxRecord, err := endpoint.NewMXRecord(t); err == nil {
-							v1 = provider.EnsureTrailingDot(*mxRecord.GetHost())
+							v1 = provider.EnsureTrailingDot(mxRecord.GetHost())
 						}
 						v2 = provider.EnsureTrailingDot(record.Data)
 					case endpoint.RecordTypeCNAME:
