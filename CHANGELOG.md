@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v1.0.2...v1.0.3) (2026-10-01)
+
+
+### Bug Fixes
+
+* adapt to external-dns v0.23 MXTarget.GetHost signature ([2989dce](https://github.com/amoniacou/external-dns-digitalocean-webhook/commit/2989dceb8f55f2f60847be2528f8bd50b7aa5f8e))
+
 ## [1.0.2](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v1.0.1...v1.0.2) (2026-07-21)
 
 
