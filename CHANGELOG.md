@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v1.0.3...v1.0.4) (2026-10-02)
+
+
+### Bug Fixes
+
+* **ci:** use go.mod Go version in release workflow ([bdbe409](https://github.com/amoniacou/external-dns-digitalocean-webhook/commit/bdbe4099279fc541ba2e62fe69e959fe618c83ee))
+
 ## [1.0.3](https://github.com/amoniacou/external-dns-digitalocean-webhook/compare/v1.0.2...v1.0.3) (2026-10-01)
 
 
